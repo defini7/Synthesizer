@@ -52,6 +52,10 @@ FTYPE approxsin(FTYPE x)
 #define SYNTH_WAVE(x) sin(x)
 #endif
 
+#ifndef FTYPE
+#define FTYPE double
+#endif
+
 namespace synth
 {
 	constexpr FTYPE PI = 3.14159;

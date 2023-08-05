@@ -37,6 +37,10 @@
 #include <cstdint>
 #include <cmath>
 
+#ifndef FTYPE
+#define FTYPE double
+#endif
+
 #ifdef SYNTH_APPROX
 FTYPE approxsin(FTYPE x)
 {
@@ -50,10 +54,6 @@ FTYPE approxsin(FTYPE x)
 #define SYNTH_WAVE(x) approxsin(x)
 #else
 #define SYNTH_WAVE(x) sin(x)
-#endif
-
-#ifndef FTYPE
-#define FTYPE double
 #endif
 
 namespace synth

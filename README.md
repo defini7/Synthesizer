@@ -1,5 +1,2 @@
 # Synthesizer
-Библиотека для создания звуков
-
-# P.S.
-WinAPI заставляет меня использовать венгерскую нотацию :)
+Library for creating sounds

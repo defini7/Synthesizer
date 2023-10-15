@@ -36,32 +36,46 @@
 
 #include <cstdint>
 #include <cmath>
+#include <vector>
+#include <list>
+#include <mutex>
 
-#ifndef FTYPE
-#define FTYPE double
+#ifndef fwave_t
+	#define fwave_t double
+#endif
+
+#ifndef string_t
+	#include <string>
+	#ifdef _UNICODE
+		#define string_t std::wstring
+		#define _T(x) L##x
+	#else
+		#define string_t std::string
+		#define _T(x) x
+	#endif
 #endif
 
 #ifdef SYNTH_APPROX
-FTYPE approxsin(FTYPE x)
-{
-	x *= 0.15915;
-	x -= (int32_t)x;
-	return 20.875 * x * (x - 0.5) * (x - 1.0);
-}
+	fwave_t approxsin(fwave_t x)
+	{
+		x *= 0.15915;
+		x -= (int32_t)x;
+		return 20.875 * x * (x - 0.5) * (x - 1.0);
+	}
 
-// TODO: Approx asin
+	// TODO: Approx asin
 
-#define SYNTH_WAVE(x) approxsin(x)
+	#define wave(x) approxsin(x)
 #else
-#define SYNTH_WAVE(x) sin(x)
+	#define wave(x) sin(x)
 #endif
 
 namespace synth
 {
-	constexpr FTYPE PI = 3.14159;
-	const FTYPE TWLTH_ROOT_OF_2 = pow(2.0, 1.0 / 12.0);
+	constexpr fwave_t PI = 3.14159;
+	const fwave_t TWLTH_ROOT_OF_2 = pow(2.0, 1.0 / 12.0);
 
-	enum class Oscillator : uint8_t
+	enum class oscillator : uint8_t
 	{
 		SINE,
 		TRIANGLE,
@@ -71,213 +85,211 @@ namespace synth
 		NOISE
 	};
 
-	FTYPE Ang(FTYPE dFreq);
-	FTYPE Osc(FTYPE dTime, FTYPE dHertz, Oscillator oscillator, FTYPE dLFOHertz = 0.0, FTYPE dLFOAmplitude = 0.0, FTYPE dSawPeriod = 50.0);
+	fwave_t ang(fwave_t freq);
+	fwave_t osc(fwave_t time, fwave_t hertz, oscillator oscillator, fwave_t lfo_hertz = 0.0, fwave_t lfo_amplitude = 0.0, fwave_t saw_period = 50.0);
 
-	namespace inst { struct Base; }
+	namespace inst { struct base; }
 
-	struct Note
+	struct note
 	{
 		int32_t id;
-		FTYPE on, off;
+		fwave_t on, off;
 		bool active;
 
-		inst::Base* channel;
+		inst::base* channel;
 
-		Note();
+		note();
 	};
 
-	FTYPE Scale(FTYPE dFreq, int32_t nNoteID);
+	fwave_t scale(fwave_t freq, int32_t noteID);
 
 	namespace envelope
 	{
-		struct Base
+		struct base
 		{
-			virtual FTYPE GetAmplitude(FTYPE dTimeGlobal, FTYPE dTimeOn, FTYPE dTimeOff) = 0;
+			virtual fwave_t get_amplitude(fwave_t time_global, fwave_t time_on, fwave_t time_off) = 0;
 		};
 
-		struct ADSR : Base
+		struct adsr : base
 		{
-			FTYPE dAttackTime;
-			FTYPE dDecayTime;
-			FTYPE dSustainAmplitude;
-			FTYPE dReleaseTime;
-			FTYPE dStartAmplitude;
+			fwave_t attackTime;
+			fwave_t decayTime;
+			fwave_t sustainAmplitude;
+			fwave_t releaseTime;
+			fwave_t startAmplitude;
 
-			ADSR();
-			FTYPE GetAmplitude(FTYPE dTimeGlobal, FTYPE dTimeOn, FTYPE dTimeOff) override;
+			adsr();
+			fwave_t get_amplitude(fwave_t time_global, fwave_t time_on, fwave_t time_off) override;
 		};
 	}
 
 	namespace filter
 	{
-		struct Base
+		struct base
 		{
-			FTYPE dAlpha;
-			FTYPE dPrevSample;
-			FTYPE dHertz;
+			fwave_t alpha;
+			fwave_t prevSample;
+			fwave_t hertz;
 
-			Base(FTYPE dFreq = 120.0, FTYPE dHertz = 44100.0);
+			base(fwave_t freq = 120.0, fwave_t hertz = 44100.0);
 
-			void SetFrequency(FTYPE dFreq);
-			virtual FTYPE GetFilter(FTYPE dTimeGlobal, FTYPE dSample) = 0;
+			void set_frequency(fwave_t freq);
+			virtual fwave_t filter(fwave_t time_global, fwave_t sample) = 0;
 		};
 
-		struct LowPass : Base
+		struct low_pass : base
 		{
-			LowPass(FTYPE dFreq = 120.0, FTYPE dHertz = 44100.0);
-
-			virtual FTYPE GetFilter(FTYPE dTimeGlobal, FTYPE dSample) override;
+			low_pass(fwave_t freq = 120.0, fwave_t hertz = 44100.0);
+			virtual fwave_t filter(fwave_t time_global, fwave_t sample) override;
 		};
 
-		struct HighPass : Base
+		struct high_pass : base
 		{
-			HighPass(FTYPE dFreq = 120.0, FTYPE dHertz = 44100.0);
-
-			virtual FTYPE GetFilter(FTYPE dTimeGlobal, FTYPE dSample) override;
+			high_pass(fwave_t freq = 120.0, fwave_t hertz = 44100.0);
+			virtual fwave_t filter(fwave_t time_global, fwave_t sample) override;
 		};
 	}
 
 	namespace inst
 	{
-		struct Base
+		struct base
 		{
-			FTYPE dVolume;
-			FTYPE dMaxLifeTime;
-			std::wstring sName;
+			fwave_t volume;
+			fwave_t maxLifeTime;
+			string_t name;
 
-			envelope::ADSR env;
+			envelope::adsr env;
 
-			virtual FTYPE Sound(FTYPE dTimeGlobal, const Note& note, bool& bNoteFinished) = 0;
+			virtual fwave_t sound(fwave_t time_global, const note& note, bool& note_finished) = 0;
 
-			bool NoteFinished(FTYPE dAmplitude, bool bCheckAmplitude = true, FTYPE dTimeGlobal = 0.0, FTYPE dTimeOn = 0.0);
+			bool is_note_finished(fwave_t amplitude, bool checkAmplitude = true, fwave_t timeGlobal = 0.0, fwave_t timeOn = 0.0);
 		};
 
-		struct Bell : Base
+		struct bell : base
 		{
-			Bell();
-			FTYPE Sound(FTYPE dTimeGlobal, const Note& note, bool& bNoteFinished) override;
+			bell();
+			virtual fwave_t sound(fwave_t time_global, const note& note, bool& note_finished) override;
 		};
 
-		struct Harmonica : Base
+		struct harmonica : base
 		{
-			Harmonica();
-			FTYPE Sound(FTYPE dTimeGlobal, const Note& note, bool& bNoteFinished) override;
+			harmonica();
+			fwave_t sound(fwave_t time_global, const note& note, bool& note_finished) override;
 		};
 
 		namespace drum
 		{
-			struct Kick : Base
+			struct kick : base
 			{
-				Kick();
-				FTYPE Sound(FTYPE dTimeGlobal, const Note& note, bool& bNoteFinished) override;
+				kick();
+				fwave_t sound(fwave_t time_global, const note& note, bool& note_finished) override;
 			};
 
-			struct Snare : Base
+			struct snare : base
 			{
-				Snare();
-				FTYPE Sound(FTYPE dTimeGlobal, const Note& note, bool& bNoteFinished) override;
+				snare();
+				fwave_t sound(fwave_t time_global, const note& note, bool& note_finished) override;
 			};
 
-			struct HiHat : Base
+			struct hihat : base
 			{
-				HiHat();
-				FTYPE Sound(FTYPE dTimeGlobal, const Note& note, bool& bNoteFinished) override;
+				hihat();
+				fwave_t sound(fwave_t time_global, const note& note, bool& note_finished) override;
 			};
 		}
 	}
 
-	struct Sequencer
+	struct sequencer
 	{
 	public:
-		struct Channel
+		struct channel
 		{
-			inst::Base* pInstrument;
-			std::wstring sBeat;
+			inst::base* instrument;
+			string_t beat;
 		};
-		
-		Sequencer(FTYPE dTempo = 120.0, uint32_t nBeats = 4, uint32_t nSubBeats = 4);
 
-		uint32_t Update(FTYPE dDeltaTime);
-		void AddInst(inst::Base* pInstrument, const std::wstring& sBeat = L"");
+		sequencer(fwave_t tempo = 120.0, uint32_t beats = 4, uint32_t sub_beats = 4);
+
+		uint32_t update(fwave_t deltaTime);
+		void add_inst(inst::base* instrument, const string_t& beat = string_t());
 
 	public:
-		uint32_t nBeats;
-		uint32_t nSubBeats;
+		uint32_t beats;
+		uint32_t subBeats;
 
-		uint32_t nCurrentBeat;
-		uint32_t nTotalBeats;
+		uint32_t currentBeat;
+		uint32_t totalBeats;
 
-		FTYPE dTempo;
-		FTYPE dBeatTime;
-		FTYPE dTimeTotal;
+		fwave_t tempo;
+		fwave_t beatTime;
+		fwave_t timeTotal;
 
-		std::vector<Note> vNotes;
-		std::vector<Channel> vChannels;
-		
+		std::vector<note> notes;
+		std::vector<channel> channels;
+
 	};
 
-	class Base
+	class base
 	{
 	public:
-		Base();
+		base();
 
-		std::list<Note> listNotes;
-		std::mutex muxNotes;
+		std::list<note> notes;
+		std::mutex mux;
 
-		FTYPE GetSample(FTYPE dTimeGlobal);
+		fwave_t sample(fwave_t time_global);
 
 	};
 
 #ifdef SYNTH_IMPL
 #undef SYNTH_IMPL
 
-	FTYPE Ang(FTYPE dFreq)
+	fwave_t ang(fwave_t freq)
 	{
-		return 2.0 * PI * dFreq;
+		return 2.0 * PI * freq;
 	}
 
-	FTYPE Osc(FTYPE dTime, FTYPE dHertz, Oscillator oscillator, FTYPE dLFOHertz, FTYPE dLFOAmplitude, FTYPE dSawPeriod)
+	fwave_t osc(fwave_t time, fwave_t hertz, oscillator oscillator, fwave_t lfo_hertz, fwave_t lfo_amplitude, fwave_t saw_period)
 	{
 		// Calculating frequency with modulation
-		FTYPE dFreq = Ang(dHertz) * dTime + dLFOAmplitude * dHertz * SYNTH_WAVE(Ang(dLFOHertz) * dTime);
-		FTYPE dOutput = 0.0;
+		fwave_t freq = ang(hertz) * time + lfo_amplitude * hertz * wave(ang(lfo_hertz) * time);
+		fwave_t output = 0.0;
 
 		switch (oscillator)
 		{
-		case Oscillator::SINE:
-			dOutput = SYNTH_WAVE(dFreq);
-		break;
+		case oscillator::SINE:
+			output = wave(freq);
+			break;
 
-		case Oscillator::TRIANGLE:
-			dOutput = asin(SYNTH_WAVE(dFreq)) * 2.0 / PI;
-		break;
+		case oscillator::TRIANGLE:
+			output = asin(wave(freq)) * 2.0 / PI;
+			break;
 
-		case Oscillator::SQUARE:
-			dOutput = SYNTH_WAVE(dFreq) > 0.0 ? 1.0 : -1.0;
-		break;
+		case oscillator::SQUARE:
+			output = wave(freq) > 0.0 ? 1.0 : -1.0;
+			break;
 
-		case Oscillator::SAW_ANA:
+		case oscillator::SAW_ANA:
 		{
-			for (FTYPE k = 1.0; k < dSawPeriod; k += 1.0) dOutput += SYNTH_WAVE(dFreq * k) / k;
-			dOutput *= 2.0 / PI;
+			for (fwave_t k = 1.0; k < saw_period; k += 1.0) output += wave(freq * k) / k;
+			output *= 2.0 / PI;
 		}
 		break;
 
-		case Oscillator::SAW_DIG:
-			dOutput = dFreq * fmod(dTime, 1.0 / dHertz) / PI / dTime - PI * 0.5;
-		break;
+		case oscillator::SAW_DIG:
+			output = freq * fmod(time, 1.0 / hertz) / PI / time - PI * 0.5;
+			break;
 
-		case Oscillator::NOISE:
-			dOutput = 2.0 * (FTYPE)rand() / (FTYPE)RAND_MAX - 1.0;
-		break;
+		case oscillator::NOISE:
+			output = 2.0 * (fwave_t)rand() / (fwave_t)RAND_MAX - 1.0;
+			break;
 
 		}
 
-		return dOutput;
+		return output;
 	}
 
-	Note::Note()
+	note::note()
 	{
 		id = 0;
 		on = 0.0;
@@ -286,292 +298,292 @@ namespace synth
 		channel = nullptr;
 	}
 
-	FTYPE Scale(int32_t nNoteID)	
+	fwave_t scale(int32_t noteID)
 	{
-		return 8.0 * pow(TWLTH_ROOT_OF_2, nNoteID);
+		return 8.0 * pow(TWLTH_ROOT_OF_2, noteID);
 	}
 
-	envelope::ADSR::ADSR()
+	envelope::adsr::adsr()
 	{
-		dAttackTime = 0.1;
-		dDecayTime = 0.1;
-		dSustainAmplitude = 1.0;
-		dReleaseTime = 0.2;
-		dStartAmplitude = 1.0;
+		attackTime = 0.1;
+		decayTime = 0.1;
+		sustainAmplitude = 1.0;
+		releaseTime = 0.2;
+		startAmplitude = 1.0;
 	}
 
-	FTYPE envelope::ADSR::GetAmplitude(FTYPE dTimeGlobal, FTYPE dTimeOn, FTYPE dTimeOff)
+	fwave_t envelope::adsr::get_amplitude(fwave_t time_global, fwave_t time_on, fwave_t time_off)
 	{
-		FTYPE dAmplitude = 0.0;
+		fwave_t amplitude = 0.0;
 
-		if (dTimeOn > dTimeOff) // Note is on
+		if (time_on > time_off) // Note is on
 		{
-			FTYPE dLifeTime = dTimeGlobal - dTimeOn;
+			fwave_t lifeTime = time_global - time_on;
 
-			if (dLifeTime <= dAttackTime)
-				dAmplitude = dLifeTime / dAttackTime * dStartAmplitude;
+			if (lifeTime <= attackTime)
+				amplitude = lifeTime / attackTime * startAmplitude;
 
-			if (dAttackTime < dLifeTime && dLifeTime <= dAttackTime + dDecayTime)
-				dAmplitude = (dLifeTime - dAttackTime) / dDecayTime * (dSustainAmplitude - dStartAmplitude) + dStartAmplitude;
+			if (attackTime < lifeTime && lifeTime <= attackTime + decayTime)
+				amplitude = (lifeTime - attackTime) / decayTime * (sustainAmplitude - startAmplitude) + startAmplitude;
 
-			if (dAttackTime + dDecayTime < dLifeTime)
-				dAmplitude = dSustainAmplitude;
+			if (attackTime + decayTime < lifeTime)
+				amplitude = sustainAmplitude;
 		}
 		else // Note is off
 		{
-			FTYPE dLifeTime = dTimeOff - dTimeOn;
-			FTYPE dReleaseAmplitude = 0.0;
+			fwave_t lifeTime = time_off - time_on;
+			fwave_t releaseAmplitude = 0.0;
 
-			if (dLifeTime <= dAttackTime)
-				dReleaseAmplitude = dLifeTime / dAttackTime * dStartAmplitude;
+			if (lifeTime <= attackTime)
+				releaseAmplitude = lifeTime / attackTime * startAmplitude;
 
-			if (dAttackTime < dLifeTime && dLifeTime <= dAttackTime + dDecayTime)
-				dReleaseAmplitude = (dLifeTime - dAttackTime) / dDecayTime * (dSustainAmplitude - dStartAmplitude) + dStartAmplitude;
+			if (attackTime < lifeTime && lifeTime <= attackTime + decayTime)
+				releaseAmplitude = (lifeTime - attackTime) / decayTime * (sustainAmplitude - startAmplitude) + startAmplitude;
 
-			if (dAttackTime + dDecayTime < dLifeTime)
-				dReleaseAmplitude = dSustainAmplitude;
+			if (attackTime + decayTime < lifeTime)
+				releaseAmplitude = sustainAmplitude;
 
-			dAmplitude = (dTimeGlobal - dTimeOff) / dReleaseTime * -dReleaseAmplitude + dReleaseAmplitude;
+			amplitude = (time_global - time_off) / releaseTime * -releaseAmplitude + releaseAmplitude;
 		}
 
-		return dAmplitude > 0.01 ? dAmplitude : 0.0;
+		return amplitude > 0.01 ? amplitude : 0.0;
 	}
 
-	filter::Base::Base(FTYPE dFreq, FTYPE dHertz)
+	filter::base::base(fwave_t freq, fwave_t hertz)
 	{
-		dAlpha = 0.0;
-		dPrevSample = 0.0;
-		this->dHertz = dHertz;
-		SetFrequency(dFreq);
+		alpha = 0.0;
+		prevSample = 0.0;
+		this->hertz = hertz;
+		set_frequency(freq);
 	}
 
-	void filter::Base::SetFrequency(FTYPE dFreq)
+	void filter::base::set_frequency(fwave_t freq)
 	{
-		dAlpha = exp(-2.0 * PI * dFreq / dHertz);
+		alpha = exp(-2.0 * PI * freq / hertz);
 	}
 
-	filter::LowPass::LowPass(FTYPE dFreq, FTYPE dHertz) : filter::Base(dFreq, dHertz)
-	{
-	}
-
-	FTYPE filter::LowPass::GetFilter(FTYPE dTimeGlobal, FTYPE dSample)
-	{
-		FTYPE dOutput = (1.0 - dAlpha) * dSample + dAlpha * dPrevSample;
-		dPrevSample = dOutput;
-		return dOutput;
-	}
-
-	filter::HighPass::HighPass(FTYPE dFreq, FTYPE dHertz) : filter::Base(dFreq, dHertz)
+	filter::low_pass::low_pass(fwave_t freq, fwave_t hertz) : filter::base(freq, hertz)
 	{
 	}
 
-	FTYPE filter::HighPass::GetFilter(FTYPE dTimeGlobal, FTYPE dSample)
+	fwave_t filter::low_pass::filter(fwave_t time_global, fwave_t sample)
 	{
-		FTYPE dOutput = dAlpha * (2.0 * dPrevSample - dSample);
-		dPrevSample = dOutput;
-		return dOutput;
+		fwave_t output = (1.0 - alpha) * sample + alpha * prevSample;
+		prevSample = output;
+		return output;
 	}
 
-	bool inst::Base::NoteFinished(FTYPE dAmplitude, bool bCheckAmplitude, FTYPE dTimeGlobal, FTYPE dTimeOn)
+	filter::high_pass::high_pass(fwave_t freq, fwave_t hertz) : filter::base(freq, hertz)
 	{
-		if (bCheckAmplitude) return dAmplitude <= 0.0;
-		return dMaxLifeTime > 0.0 && dTimeGlobal - dTimeOn >= dMaxLifeTime;
 	}
 
-	inst::Bell::Bell()
+	fwave_t filter::high_pass::filter(fwave_t time_global, fwave_t sample)
 	{
-		env.dAttackTime = 0.01;
-		env.dDecayTime = 1.0;
-		env.dSustainAmplitude = 0.0;
-		env.dReleaseTime = 1.0;
-
-		dVolume = 1.0;
-		dMaxLifeTime = 3.0;
-		sName = L"Bell";
+		fwave_t output = alpha * (2.0 * prevSample - sample);
+		prevSample = output;
+		return output;
 	}
 
-	FTYPE inst::Bell::Sound(FTYPE dTimeGlobal, const Note& note, bool& bNoteFinished)
+	bool inst::base::is_note_finished(fwave_t amplitude, bool check_amplitude, fwave_t time_global, fwave_t time_on)
 	{
-		FTYPE dAmplitude = env.GetAmplitude(dTimeGlobal, note.on, note.off);
-		bNoteFinished = NoteFinished(dAmplitude);
-
-		FTYPE dSound =
-			1.0 * Osc(dTimeGlobal - note.on, Scale(note.id + 12), Oscillator::SINE, 5.0, 0.001) +
-			0.5 * Osc(dTimeGlobal - note.on, Scale(note.id + 24), Oscillator::SINE) +
-			0.25 * Osc(dTimeGlobal - note.on, Scale(note.id + 36), Oscillator::SINE);
-
-		return dAmplitude * dSound * dVolume;
+		if (check_amplitude) return amplitude <= 0.0;
+		return maxLifeTime > 0.0 && time_global - time_on >= maxLifeTime;
 	}
 
-	inst::Harmonica::Harmonica()
+	inst::bell::bell()
 	{
-		env.dAttackTime = 0.0;
-		env.dDecayTime = 1.0;
-		env.dSustainAmplitude = 0.95;
-		env.dReleaseTime = 0.1;
+		env.attackTime = 0.01;
+		env.decayTime = 1.0;
+		env.sustainAmplitude = 0.0;
+		env.releaseTime = 1.0;
 
-		dVolume = 0.3;
-		dMaxLifeTime = -1.0;
-		sName = L"Harmonica";
+		volume = 1.0;
+		maxLifeTime = 3.0;
+		name = _T("Bell");
 	}
 
-	FTYPE inst::Harmonica::Sound(FTYPE dTimeGlobal, const Note& note, bool& bNoteFinished)
+	fwave_t inst::bell::sound(fwave_t time_global, const note& note, bool& note_finished)
 	{
-		FTYPE dAmplitude = env.GetAmplitude(dTimeGlobal, note.on, note.off);
-		bNoteFinished = NoteFinished(dAmplitude);
+		fwave_t amplitude = env.get_amplitude(time_global, note.on, note.off);
+		note_finished = is_note_finished(amplitude);
 
-		FTYPE dSound =
-			1.0 * Osc(dTimeGlobal - note.on, Scale(note.id - 12), Oscillator::SAW_ANA, 5.0, 0.001, 100.0) +
-			1.0 * Osc(dTimeGlobal - note.on, Scale(note.id), Oscillator::SQUARE, 5.0, 0.001) +
-			0.5 * Osc(dTimeGlobal - note.on, Scale(note.id + 12), Oscillator::SQUARE) +
-			0.05 * Osc(dTimeGlobal - note.on, Scale(note.id + 24), Oscillator::NOISE);
+		fwave_t sound =
+			1.0 * osc(time_global - note.on, scale(note.id + 12), oscillator::SINE, 5.0, 0.001) +
+			0.5 * osc(time_global - note.on, scale(note.id + 24), oscillator::SINE) +
+			0.25 * osc(time_global - note.on, scale(note.id + 36), oscillator::SINE);
 
-		return dAmplitude * dSound * dVolume;
+		return amplitude * sound * volume;
 	}
 
-	inst::drum::Kick::Kick()
+	inst::harmonica::harmonica()
 	{
-		env.dAttackTime = 0.01;
-		env.dDecayTime = 0.15;
-		env.dSustainAmplitude = 0.0;
-		env.dReleaseTime = 0.0;
+		env.attackTime = 0.0;
+		env.decayTime = 1.0;
+		env.sustainAmplitude = 0.95;
+		env.releaseTime = 0.1;
 
-		dVolume = 1.0;
-		dMaxLifeTime = 1.5;
-		sName = L"Drum Kick";
+		volume = 0.3;
+		maxLifeTime = -1.0;
+		name = _T("Harmonica");
 	}
 
-	FTYPE inst::drum::Kick::Sound(FTYPE dTimeGlobal, const Note& note, bool& bNoteFinished)
+	fwave_t inst::harmonica::sound(fwave_t time_global, const note& note, bool& bNoteFinished)
 	{
-		FTYPE dAmplitude = env.GetAmplitude(dTimeGlobal, note.on, note.off);
-		bNoteFinished = NoteFinished(dAmplitude, false, dTimeGlobal, note.on);
+		fwave_t amplitude = env.get_amplitude(time_global, note.on, note.off);
+		bNoteFinished = is_note_finished(amplitude);
 
-		FTYPE dSound =
-			0.99 * Osc(dTimeGlobal - note.on, Scale(note.id - 36), Oscillator::SINE, 1.0, 1.0) +
-			0.01 * Osc(dTimeGlobal - note.on, 0, Oscillator::NOISE);
+		fwave_t sound =
+			1.0 * osc(time_global - note.on, scale(note.id - 12), oscillator::SAW_ANA, 5.0, 0.001, 100.0) +
+			1.0 * osc(time_global - note.on, scale(note.id), oscillator::SQUARE, 5.0, 0.001) +
+			0.5 * osc(time_global - note.on, scale(note.id + 12), oscillator::SQUARE) +
+			0.05 * osc(time_global - note.on, scale(note.id + 24), oscillator::NOISE);
 
-		return dAmplitude * dSound * dVolume;
+		return amplitude * sound * volume;
 	}
 
-	inst::drum::Snare::Snare()
+	inst::drum::kick::kick()
 	{
-		env.dAttackTime = 0.0;
-		env.dDecayTime = 0.2;
-		env.dSustainAmplitude = 0.0;
-		env.dReleaseTime = 0.0;
+		env.attackTime = 0.01;
+		env.decayTime = 0.15;
+		env.sustainAmplitude = 0.0;
+		env.releaseTime = 0.0;
 
-		dVolume = 1.0;
-		dMaxLifeTime = 1.0;
-		sName = L"Drum Snare";
+		volume = 1.0;
+		maxLifeTime = 1.5;
+		name = _T("Drum Kick");
 	}
 
-	FTYPE inst::drum::Snare::Sound(FTYPE dTimeGlobal, const Note& note, bool& bNoteFinished)
+	fwave_t inst::drum::kick::sound(fwave_t time_global, const note& note, bool& note_finished)
 	{
-		FTYPE dAmplitude = env.GetAmplitude(dTimeGlobal, note.on, note.off);
-		bNoteFinished = NoteFinished(dAmplitude, false, dTimeGlobal, note.on);
+		fwave_t amplitude = env.get_amplitude(time_global, note.on, note.off);
+		note_finished = is_note_finished(amplitude, false, time_global, note.on);
 
-		FTYPE dSound =
-			0.5 * Osc(dTimeGlobal - note.on, Scale(note.id - 24), Oscillator::SINE, 0.5, 1.0) +
-			0.5 * Osc(dTimeGlobal - note.on, 0, Oscillator::NOISE);
+		fwave_t sound =
+			0.99 * osc(time_global - note.on, scale(note.id - 36), oscillator::SINE, 1.0, 1.0) +
+			0.01 * osc(time_global - note.on, 0, oscillator::NOISE);
 
-		return dAmplitude * dSound * dVolume;
+		return amplitude * sound * volume;
 	}
 
-	inst::drum::HiHat::HiHat()
+	inst::drum::snare::snare()
 	{
-		env.dAttackTime = 0.01;
-		env.dDecayTime = 0.05;
-		env.dSustainAmplitude = 0.0;
-		env.dReleaseTime = 0.0;
+		env.attackTime = 0.0;
+		env.decayTime = 0.2;
+		env.sustainAmplitude = 0.0;
+		env.releaseTime = 0.0;
 
-		dVolume = 0.5;
-		dMaxLifeTime = 1.5;
-		sName = L"Drum HiHat";
+		volume = 1.0;
+		maxLifeTime = 1.0;
+		name = _T("Drum Snare");
 	}
 
-	FTYPE inst::drum::HiHat::Sound(FTYPE dTimeGlobal, const Note& note, bool& bNoteFinished)
+	fwave_t inst::drum::snare::sound(fwave_t time_global, const note& note, bool& note_finished)
 	{
-		FTYPE dAmplitude = env.GetAmplitude(dTimeGlobal, note.on, note.off);
-		bNoteFinished = NoteFinished(dAmplitude, false, dTimeGlobal, note.on);
+		fwave_t amplitude = env.get_amplitude(time_global, note.on, note.off);
+		note_finished = is_note_finished(amplitude, false, time_global, note.on);
 
-		FTYPE dSound =
-			0.1 * Osc(dTimeGlobal - note.on, Scale(note.id - 12), Oscillator::SQUARE, 1.5, 1.0) +
-			0.9 * Osc(dTimeGlobal - note.on, 0, Oscillator::NOISE);
+		fwave_t sound =
+			0.5 * osc(time_global - note.on, scale(note.id - 24), oscillator::SINE, 0.5, 1.0) +
+			0.5 * osc(time_global - note.on, 0, oscillator::NOISE);
 
-		return dAmplitude * dSound * dVolume;
+		return amplitude * sound * volume;
 	}
 
-	Sequencer::Sequencer(FTYPE dTempo, uint32_t nBeats, uint32_t nSubBeats)
+	inst::drum::hihat::hihat()
 	{
-		this->nBeats = nBeats;
-		this->nSubBeats = nSubBeats;
+		env.attackTime = 0.01;
+		env.decayTime = 0.05;
+		env.sustainAmplitude = 0.0;
+		env.releaseTime = 0.0;
 
-		nCurrentBeat = 0;
-		nTotalBeats = nBeats * nSubBeats;
-
-		this->dTempo = dTempo;
-		dBeatTime = 60.0 / dTempo / (FTYPE)nSubBeats;
-		dTimeTotal = 0.0;
+		volume = 0.5;
+		maxLifeTime = 1.5;
+		name = _T("Drum HiHat");
 	}
 
-	uint32_t Sequencer::Update(FTYPE dDeltaTime)
+	fwave_t inst::drum::hihat::sound(fwave_t time_global, const note& note, bool& note_finished)
 	{
-		vNotes.clear();
+		fwave_t amplitude = env.get_amplitude(time_global, note.on, note.off);
+		note_finished = is_note_finished(amplitude, false, time_global, note.on);
 
-		dTimeTotal += dDeltaTime;
-		while (dTimeTotal >= dBeatTime)
+		fwave_t sound =
+			0.1 * osc(time_global - note.on, scale(note.id - 12), oscillator::SQUARE, 1.5, 1.0) +
+			0.9 * osc(time_global - note.on, 0, oscillator::NOISE);
+
+		return amplitude * sound * volume;
+	}
+
+	sequencer::sequencer(fwave_t tempo, uint32_t beats, uint32_t sub_beats)
+	{
+		this->beats = beats;
+		subBeats = sub_beats;
+
+		currentBeat = 0;
+		totalBeats = beats * sub_beats;
+
+		this->tempo = tempo;
+		beatTime = 60.0 / tempo / (fwave_t)sub_beats;
+		timeTotal = 0.0;
+	}
+
+	uint32_t sequencer::update(fwave_t delta_time)
+	{
+		notes.clear();
+
+		timeTotal += delta_time;
+		while (timeTotal >= beatTime)
 		{
-			dTimeTotal -= dBeatTime;
+			timeTotal -= beatTime;
 
-			if (++nCurrentBeat >= nTotalBeats)
-				nCurrentBeat = 0;
+			if (++currentBeat >= totalBeats)
+				currentBeat = 0;
 
-			for (auto& channel : vChannels)
+			for (auto& channel : channels)
 			{
-				if (channel.sBeat[nCurrentBeat] == L'x')
+				if (channel.beat[currentBeat] == L'x')
 				{
-					Note note;
-					note.channel = channel.pInstrument;
+					note note;
+					note.channel = channel.instrument;
 					note.active = true;
 					note.id = 64;
-					vNotes.push_back(note);
+					notes.push_back(note);
 				}
 			}
 		}
 
-		return vNotes.size();
+		return notes.size();
 	}
 
-	void Sequencer::AddInst(inst::Base* pInstrument, const std::wstring& sBeat)
+	void sequencer::add_inst(inst::base* instrument, const string_t& beat)
 	{
-		Channel channel;
-		channel.pInstrument = pInstrument;
-		channel.sBeat = sBeat;
-		vChannels.push_back(channel);
+		channel channel;
+		channel.instrument = instrument;
+		channel.beat = beat;
+		channels.push_back(channel);
 	}
 
-	Base::Base() {}
+	base::base() {}
 
-	FTYPE Base::GetSample(FTYPE dTimeGlobal)
+	fwave_t base::sample(fwave_t time_global)
 	{
-		std::unique_lock<std::mutex> lock(muxNotes);
+		std::unique_lock<std::mutex> lock(mux);
 
-		FTYPE dOutput = 0.0;
+		fwave_t output = 0.0;
 
-		for (auto& note : listNotes)
+		for (auto& note : notes)
 		{
-			bool bNoteFinished = false;
+			bool noteFinished = false;
 
 			if (note.channel)
-				dOutput += note.channel->Sound(dTimeGlobal, note, bNoteFinished);
+				output += note.channel->sound(time_global, note, noteFinished);
 
-			if (bNoteFinished)
+			if (noteFinished)
 				note.active = false;
 		}
 
-		listNotes.remove_if([](const Note& note) { return !note.active; });
+		notes.remove_if([](const note& note) { return !note.active; });
 
-		return dOutput;
+		return output;
 	}
 
 #endif
